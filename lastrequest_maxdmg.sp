@@ -5,16 +5,16 @@
 #include <hosties>
 #include <lastrequest>
 
-#define START_HP 100
 #define SERVER 0
 #define PRISONER 0
 #define GUARD 1
+#define LR_TIME 45.0
 
 new g_LREntryNum;
-new LR_Player_Guard;
-new LR_Player_Prisoner;
+new Handle:LR_Information = INVALID_HANDLE;
+new IndexInArray;
 new String:g_sLR_Name[64];
-new bool:IsThisLRInProgress = false;
+
 new g_iHealth;
 new dmg[2];
 new g_Sprite;
@@ -36,7 +36,7 @@ public Plugin:myinfo =
     name = "Last Request: Max Damage",
     author = "Jason Bourne & Kolapsicle",
     description = "",
-    version = "1.0.0",
+    version = "1.0.3",
     url = ""
 };
 
@@ -49,10 +49,13 @@ public OnPluginStart()
     HookEvent("player_hurt", EventPlayerHurt, EventHookMode_Pre);
 
     g_iHealth = FindSendPropOffs("CCSPlayer", "m_iHealth");
+
     if (g_iHealth == -1)
     {
         SetFailState("Error - Unable to get offset for CSSPlayer::m_iHealth");
     }
+
+    LR_Information = CreateArray(10);
 }
 
 public OnConfigsExecuted()
@@ -77,14 +80,18 @@ public OnMapStart()
 
 public LR_Start(Handle:LR_Array, iIndexInArray)
 {
-    new This_LR_Type = GetArrayCell(LR_Array, iIndexInArray, _:Block_LRType);
+    // keep a local copy of LR array
+    LR_Information = LR_Array;
+    IndexInArray = iIndexInArray;
+
+    new This_LR_Type = GetArrayCell(LR_Information, IndexInArray, _:Block_LRType);
     if (This_LR_Type == g_LREntryNum)
     {
-        LR_Player_Prisoner = GetArrayCell(LR_Array, iIndexInArray, _:Block_Prisoner);
-        LR_Player_Guard = GetArrayCell(LR_Array, iIndexInArray, _:Block_Guard);
+        new LR_Player_Prisoner = GetArrayCell(LR_Information, IndexInArray, _:Block_Prisoner);
+        new LR_Player_Guard = GetArrayCell(LR_Information, IndexInArray, _:Block_Guard);
 
         // check datapack value
-        new LR_Pack_Value = GetArrayCell(LR_Array, iIndexInArray, _:Block_Global1);
+        new LR_Pack_Value = GetArrayCell(LR_Information, IndexInArray, _:Block_Global1);
         switch (LR_Pack_Value)
         {
             case -1:
@@ -93,8 +100,8 @@ public LR_Start(Handle:LR_Array, iIndexInArray)
             }
         }
 
-        SetEntityHealth(LR_Player_Prisoner, START_HP);
-        SetEntityHealth(LR_Player_Guard, START_HP);
+        SetEntityHealth(LR_Player_Prisoner, 100);
+        SetEntityHealth(LR_Player_Guard, 100);
 
         StripAllWeapons(LR_Player_Prisoner);
         StripAllWeapons(LR_Player_Guard);
@@ -102,87 +109,113 @@ public LR_Start(Handle:LR_Array, iIndexInArray)
         dmg[PRISONER] = 0;
         dmg[GUARD] = 0;
 
-        IsThisLRInProgress = true;
-
-        CreateTimer(60.0, Timer_LR);
+        CreateTimer(LR_TIME, Timer_LR);
 
         PrintToChatAll(CHAT_BANNER, "LR Start", LR_Player_Prisoner, LR_Player_Guard);
-        PrintToChatAll(CHAT_BANNER, "LR Explain");
+        PrintToChatAll(CHAT_BANNER, "LR Explain", LR_TIME);
     }
 }
 
 public Action:Timer_LR(Handle:timer)
 {
-    IsThisLRInProgress = false;
-    new loser, winner;
-    if (dmg[PRISONER] == dmg[GUARD])
+    new This_LR_Type = GetArrayCell(LR_Information, IndexInArray, _:Block_LRType);
+    if (This_LR_Type == g_LREntryNum)
     {
-        PrintToChatAll(CHAT_BANNER, "LR No Winner", dmg[GUARD]);
-        ServerCommand("sm_cancellr");
-    } else {
-        if (dmg[PRISONER] > dmg[GUARD]) {
-            winner = LR_Player_Prisoner;
-            loser = LR_Player_Guard;
-        } else if(dmg[GUARD] > dmg[PRISONER]) {
-            winner = LR_Player_Guard;
-            loser = LR_Player_Prisoner;
-        }
-        SetEntityMoveType(loser, MOVETYPE_NONE);
-        StripAllWeapons(loser);
-        GetClientAbsOrigin(winner, BeamCenter);
-        TeleportEntity(loser, BeamCenter, NULL_VECTOR, NULL_VECTOR);
-        SetEntityHealth(winner, 100);
-        SetEntityHealth(loser, 1);
-        CreateTimer(0.1, Timer_CreateSprite);
-        SpriteTimer = CreateTimer(3.0, Timer_CreateSprite, _, TIMER_REPEAT);
-        GivePlayerItem(winner, "weapon_knife");
-        PrintToChatAll(CHAT_BANNER, "LR Winner", winner);
-    }
+        new LR_Player_Prisoner = GetArrayCell(LR_Information, IndexInArray, _:Block_Prisoner);
+        new LR_Player_Guard = GetArrayCell(LR_Information, IndexInArray, _:Block_Guard);
+        new loser, winner;
 
+        if (dmg[PRISONER] == dmg[GUARD])
+        {
+            PrintToChatAll(CHAT_BANNER, "LR No Winner", dmg[GUARD]);
+            ServerCommand("sm_cancellr");
+        } else
+        {
+            if (dmg[PRISONER] > dmg[GUARD])
+            {
+                winner = LR_Player_Prisoner;
+                loser = LR_Player_Guard;
+            } else if(dmg[GUARD] > dmg[PRISONER])
+            {
+                winner = LR_Player_Guard;
+                loser = LR_Player_Prisoner;
+            }
+
+            GetClientAbsOrigin(winner, BeamCenter);
+            SetEntityHealth(winner, 100);
+            GivePlayerItem(winner, "weapon_knife");
+
+            SetEntityMoveType(loser, MOVETYPE_NONE);
+            StripAllWeapons(loser);
+            TeleportEntity(loser, BeamCenter, NULL_VECTOR, NULL_VECTOR);
+            SetEntityHealth(loser, 1);
+
+            CreateTimer(0.1, Timer_CreateSprite);
+            SpriteTimer = CreateTimer(3.0, Timer_CreateSprite, _, TIMER_REPEAT);
+
+            PrintToChatAll(CHAT_BANNER, "LR Winner", winner);
+        }
+    }
     return Plugin_Continue;
 }
+
 public Action:Timer_CreateSprite(Handle:timer)
 {
+    new Float:height = BeamCenter[2];
+
     for (new i = 0; i < 7; i++)
     {
         BeamCenter[2] += 10;
         TE_SetupBeamRingPoint(BeamCenter, 100.1, 100.0, g_Sprite, 0, 0, 25, 3.0, 7.0, 0.0, colours[i], 1, 0);
         TE_SendToAll();
     }
-    BeamCenter[2] -= 70;
+
+    BeamCenter[2] = height;
 }
 
 public LR_Stop(This_LR_Type, Player_Prisoner, Player_Guard)
 {
-    if (SpriteTimer != INVALID_HANDLE)
+    if (This_LR_Type == g_LREntryNum)
     {
-        KillTimer(SpriteTimer);
-        SpriteTimer = INVALID_HANDLE;
+        if (SpriteTimer != INVALID_HANDLE)
+        {
+            KillTimer(SpriteTimer);
+            SpriteTimer = INVALID_HANDLE;
+        }
+
+        LR_Information = INVALID_HANDLE;
     }
 }
 
 public Action:EventPlayerHurt(Handle:event, const String:name[],bool:dontBroadcast)
 {
-    new victim = GetClientOfUserId(GetEventInt(event, "userid"));
-    new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-    new dhealth = GetEventInt(event, "dmg_health");
-    new health = GetEventInt(event, "health");
-
-    if (IsThisLRInProgress && IsClientInLastRequest(victim))
+    new This_LR_Type = GetArrayCell(LR_Information, IndexInArray, _:Block_LRType);
+    if (This_LR_Type == g_LREntryNum)
     {
-        decl String:wname[64];
-        GetEventString(event, "weapon", wname, sizeof(wname));
+        new LR_Player_Prisoner = GetArrayCell(LR_Information, IndexInArray, _:Block_Prisoner);
+        new LR_Player_Guard = GetArrayCell(LR_Information, IndexInArray, _:Block_Guard);
+        new victim = GetClientOfUserId(GetEventInt(event, "userid"));
+        new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+        new dhealth = GetEventInt(event, "dmg_health");
 
-        if (victim == LR_Player_Guard && (attacker == LR_Player_Guard || attacker == SERVER))
+        if (IsClientInLastRequest(victim))
         {
-            dmg[GUARD] += dhealth;
-        }
-        if (victim == LR_Player_Prisoner && (attacker == LR_Player_Prisoner || attacker == SERVER))
-        {
-            dmg[PRISONER] += dhealth;
-        }
+            decl String:wname[64];
+            GetEventString(event, "weapon", wname, sizeof(wname));
 
-        SetEntData(victim, g_iHealth, (health + dhealth), 4, true);
+            if (victim == attacker || attacker == SERVER)
+            {
+                if (victim == LR_Player_Guard)
+                {
+                    dmg[GUARD] += dhealth;
+                } else if (victim == LR_Player_Prisoner)
+                {
+                    dmg[PRISONER] += dhealth;
+                }
+            }
+
+            SetEntData(victim, g_iHealth, 100, 4, true);
+        }
     }
 
     return Plugin_Continue;
