@@ -42,7 +42,9 @@ public Plugin:myinfo =
 
 public OnPluginStart()
 {
-    Format(g_sLR_Name, sizeof(g_sLR_Name), "Max Damage");
+    LoadTranslations("maxdmg.phrases");
+
+    Format(g_sLR_Name, sizeof(g_sLR_Name), "%T", "LR Name", LANG_SERVER);
 
     HookEvent("player_hurt", EventPlayerHurt, EventHookMode_Pre);
 
@@ -104,8 +106,8 @@ public LR_Start(Handle:LR_Array, iIndexInArray)
 
         CreateTimer(60.0, Timer_LR);
 
-        PrintToChatAll("%N has challenged %N to a Max Damage Battle", LR_Player_Prisoner, LR_Player_Guard);
-        PrintToChatAll("The player whom has dealt the most damage to themseleves within 60 seconds is the winner!");
+        PrintToChatAll(CHAT_BANNER, "LR Start", LR_Player_Prisoner, LR_Player_Guard);
+        PrintToChatAll(CHAT_BANNER, "LR Explain");
     }
 }
 
@@ -115,7 +117,7 @@ public Action:Timer_LR(Handle:timer)
     new loser, winner;
     if (dmg[PRISONER] == dmg[GUARD])
     {
-        PrintToChatAll("Both players dealt %d damage to themselves. There is no winner :(", dmg[GUARD]);
+        PrintToChatAll(CHAT_BANNER, "LR No Winner", dmg[GUARD]);
         ServerCommand("sm_cancellr");
     } else {
         if (dmg[PRISONER] > dmg[GUARD]) {
@@ -134,7 +136,7 @@ public Action:Timer_LR(Handle:timer)
         CreateTimer(0.1, Timer_CreateSprite);
         SpriteTimer = CreateTimer(3.0, Timer_CreateSprite, _, TIMER_REPEAT);
         GivePlayerItem(winner, "weapon_knife");
-        PrintToChatAll("%N has won the LR, you may now kill the n00b within the cage :)", winner);
+        PrintToChatAll(CHAT_BANNER, "LR Winner", winner);
     }
 
     return Plugin_Continue;
